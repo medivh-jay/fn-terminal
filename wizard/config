@@ -1,0 +1,27 @@
+[
+  {
+    "stepTitle": "终端访问授权",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "修改后会重启应用并结束已有会话。终端以每位用户的系统身份运行，请仅向可信用户开放本应用。"
+      },
+      {
+        "type": "switch",
+        "field": "wizard_terminal_enabled",
+        "label": "启用终端访问",
+        "initValue": "false"
+      },
+      {
+        "type": "tips",
+        "helpText": "默认自动适配局域网和 FN ID 访问，无需填写 IP 或域名。若曾手动配置来源白名单，可勾选下面的选项恢复自动适配。"
+      },
+      {
+        "type": "switch",
+        "field": "wizard_reset_origins",
+        "label": "恢复自动适配访问地址",
+        "initValue": "false"
+      }
+    ]
+  }
+]

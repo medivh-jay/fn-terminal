@@ -1,0 +1,13 @@
+/build/
+/docs/*
+!/docs/DEVELOPMENT.md
+!/docs/screenshots/
+/web/node_modules/
+/web/dist/
+/internal/server/static/assets/
+/tools/
+*.fpk
+*.sock
+__pycache__/
+
+/app/bin/

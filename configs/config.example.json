@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "idle_seconds": 900,
+  "max_seconds": 3600,
+  "max_per_user": 4,
+  "max_total": 32,
+  "min_uid": 1000,
+  "allowed_users": [],
+  "allowed_origins": []
+}

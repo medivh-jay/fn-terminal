@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+for task_value in "${wizard_terminal_enabled:-false}" "${wizard_reset_origins:-false}"; do
+  case "$task_value" in true | 1 | false | 0 | '') ;; *)
+    echo 'Invalid authorization value' >&2
+    exit 1
+    ;;
+  esac
+done

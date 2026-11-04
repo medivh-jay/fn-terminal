@@ -1,0 +1,17 @@
+appname=fnterminal
+version=0.1.12
+display_name=飞牛终端
+desc=以当前 NAS 本地用户身份打开交互式终端。首次使用需管理员启用。
+source=thirdparty
+platform=x86
+maintainer=medivh-jay
+maintainer_url=https://github.com/medivh-jay/fn-terminal
+distributor=medivh-jay
+distributor_url=https://github.com/medivh-jay/fn-terminal
+desktop_uidir=ui
+desktop_applaunchname=fnterminal.main
+ctl_stop=true
+checkport=false
+micro_app=true
+disable_authorization_path=true
+changelog=新增常见 FnDepot 源格式与 V2 兼容索引，完善演示截图和发布流程。

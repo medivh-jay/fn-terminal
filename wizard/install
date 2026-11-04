@@ -1,0 +1,21 @@
+[
+  {
+    "stepTitle": "终端访问授权",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "终端允许获准使用本应用的 NAS 用户以其系统账号执行命令。应用不会自动进入 root；管理员账号的 sudo 权限仍由系统决定。请仅向可信用户开放应用权限。"
+      },
+      {
+        "type": "switch",
+        "field": "wizard_terminal_enabled",
+        "label": "启用终端访问",
+        "initValue": "false"
+      },
+      {
+        "type": "tips",
+        "helpText": "默认不启用。可稍后从应用设置中启用。自动适配局域网和 FN ID 访问，无需填写 IP 或域名。连接闲置 15 分钟或达到 1 小时时结束；断开后不会保留会话。"
+      }
+    ]
+  }
+]

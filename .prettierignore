@@ -1,0 +1,5 @@
+build/
+docs/
+internal/server/static/
+web/node_modules/
+web/dist/

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#101516" />
+    <link rel="icon" type="image/svg+xml" href="/app/fnterminal/favicon.svg" />
+    <title>终端 · 飞牛 NAS</title>
+    <script type="module" crossorigin src="/app/fnterminal/assets/index-oAx9-un-.js"></script>
+    <link rel="stylesheet" crossorigin href="/app/fnterminal/assets/index-juXmb_el.css">
+  </head>
+  <body>
+    <main id="app" class="terminal-panel" aria-label="交互式终端">
+      <header class="terminal-topline">
+        <div class="tabs-area">
+          <div id="tabs" role="tablist" aria-label="终端会话"></div>
+          <button id="new-tab" class="new-tab" aria-label="新建终端" title="新建终端">+</button>
+        </div>
+        <div id="connection" class="connection" role="status" aria-live="polite">
+          <span class="status-dot"></span><span id="connection-text">准备连接</span>
+        </div>
+        <div class="tools" aria-label="终端操作">
+          <button id="copy" aria-label="复制" title="复制选中的终端文字">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="6" y="6" width="8" height="8" rx="1" />
+              <path d="M10 4V2H2v8h2" /></svg
+            ><span class="tool-label">复制</span>
+          </button>
+          <button id="paste" aria-label="粘贴" title="粘贴剪贴板内容">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M5 3H3v11h10V3h-2" />
+              <rect x="5" y="1" width="6" height="4" rx="1" /></svg
+            ><span class="tool-label">粘贴</span>
+          </button>
+          <button id="clear" aria-label="清屏" title="清空当前终端显示">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="m9 2 5 5-7 7H3l-2-2zM5 8l5 5M8 14h7" /></svg
+            ><span class="tool-label">清屏</span>
+          </button>
+          <button id="reconnect" aria-label="重新连接" title="重新连接当前终端">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M13 5a6 6 0 1 0 1 6M13 1v4H9" /></svg
+            ><span class="tool-label">重新连接</span>
+          </button>
+          <label class="theme-picker" title="选择主题"
+            ><svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M8 1a7 7 0 1 0 0 14h1a2 2 0 0 0 0-4h-.5a1 1 0 0 1 0-2H12a3 3 0 0 0 3-3c0-3-3-5-7-5Z"
+              />
+              <path d="M4 6h.01M6 3.5h.01M9.5 3.5h.01M12 6h.01" /></svg
+            ><select id="theme-select" aria-label="主题"></select
+          ></label>
+          <button id="fullscreen" aria-label="切换全屏" title="切换全屏">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div id="terminal-deck">
+        <div id="workspace-empty" class="empty-state" hidden>
+          <span class="empty-symbol" aria-hidden="true">&gt;_</span>
+          <p>点击 + 新建终端</p>
+          <span>以当前登录用户打开 Shell</span>
+        </div>
+      </div>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,98 @@
+name: Build fnOS packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      FNTERMINAL_FNPACK: /tmp/fnpack
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Validate release tag
+        run: |
+          version="$(python3 scripts/manifest.py . amd64 version)"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$version" ]] || { echo 'Tag and static manifest version differ' >&2; exit 1; }
+          fi
+      - name: Install official fnpack and test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          curl --fail --silent --show-error --location https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64 -o "$FNTERMINAL_FNPACK"
+          echo "54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93  $FNTERMINAL_FNPACK" | sha256sum -c -
+          chmod 0755 "$FNTERMINAL_FNPACK"
+      - name: Build and test x86
+        run: |
+          bash scripts/build.sh amd64
+          go test -race ./...
+          go vet ./...
+          cd web
+          npx --no-install playwright install --with-deps chromium
+          npx --no-install playwright test
+      - name: Package and verify x86
+        run: |
+          bash scripts/package.sh amd64
+          python3 -m unittest discover -s scripts/tests -v
+      - name: Cross-build and package ARM
+        run: |
+          bash scripts/build.sh arm64
+          bash scripts/package.sh arm64
+      - name: Build application source and checksums
+        run: |
+          version="$(python3 scripts/manifest.py . amd64 version)"
+          appname="$(python3 scripts/manifest.py . amd64 appname)"
+          python3 scripts/build_source.py --repository "$GITHUB_REPOSITORY" --tag "v$version" --output build/fnpack.json "build/$appname-$version-amd64.fpk" "build/$appname-$version-arm64.fpk"
+          python3 scripts/build_source.py --repository "$GITHUB_REPOSITORY" --tag "v$version" --format v2 --output build/fnpack.v2.json "build/$appname-$version-amd64.fpk" "build/$appname-$version-arm64.fpk"
+          cd build
+          sha256sum "$appname-$version-amd64.fpk" "$appname-$version-arm64.fpk" > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-packages
+          if-no-files-found: error
+          path: |
+            build/*.fpk
+            build/fnpack.json
+            build/fnpack.v2.json
+            build/SHA256SUMS
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-packages
+          path: release
+      - name: Create draft and upload complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "飞牛终端 $GITHUB_REF_NAME" --generate-notes release/*.fpk release/fnpack.json release/fnpack.v2.json release/SHA256SUMS
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

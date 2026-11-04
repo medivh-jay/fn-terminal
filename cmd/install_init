@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+[[ "$(id -u)" == 0 ]] || {
+  echo '终端应用需要管理员执行安装生命周期。' >&2
+  exit 1
+}
+for task_command in nohup readlink install chown chmod sha256sum head mktemp mv; do
+  command -v "$task_command" >/dev/null || {
+    echo "Missing runtime tool: $task_command" >&2
+    exit 1
+  }
+done
