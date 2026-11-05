@@ -59,8 +59,11 @@ func TestWebSocketExitReasonsAreAllowlisted(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var ended struct{ Type, Reason, Message string }
-			if err := json.Unmarshal(payload, &ended); err != nil || kind != websocket.MessageText || ended.Type != "exit" || ended.Reason != tc.want || ended.Message != "会话已结束" {
+			var ended struct {
+				Type, Reason, Message string
+				Notified              bool
+			}
+			if err := json.Unmarshal(payload, &ended); err != nil || kind != websocket.MessageText || ended.Type != "exit" || ended.Reason != tc.want || ended.Message != "会话已结束" || ended.Notified {
 				t.Fatalf("unexpected exit control: %s (%v)", payload, err)
 			}
 			if strings.Contains(string(payload), "private details") || strings.Contains(string(payload), "secret") {
@@ -284,5 +287,127 @@ func TestRealWebSocketRoundTripAndInvalidControl(t *testing.T) {
 	}
 	if websocket.CloseStatus(e) != websocket.StatusPolicyViolation {
 		t.Fatalf("invalid resize not rejected: %v", e)
+	}
+}
+
+func TestExpiredSessionExplainsDisconnectInTerminal(t *testing.T) {
+	for _, reason := range []string{wire.ReasonIdleTimeout, wire.ReasonMaxDuration} {
+		t.Run(reason, func(t *testing.T) {
+			cfg := config.Defaults()
+			cfg.Enabled = true
+			peers := make(chan net.Conn, 1)
+			h := New(Options{Config: cfg, Development: true, Connect: func(context.Context, identity.Claims, terminal.Size) (net.Conn, error) {
+				local, peer := net.Pipe()
+				peers <- peer
+				return local, nil
+			}})
+			srv := httptest.NewServer(h)
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			ws, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+Prefix+"/ws", &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {srv.URL}}, Subprotocols: []string{websocketProtocol, ticketProtocolPrefix + obtainTicket(t, h, srv.URL)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ws.CloseNow()
+			peer := <-peers
+			defer peer.Close()
+			if _, _, err := ws.Read(ctx); err != nil {
+				t.Fatal(err)
+			}
+			go wire.Write(peer, wire.Exit, []byte(`{"reason":"`+reason+`"}`))
+			kind, notice, err := ws.Read(ctx)
+			if err != nil || kind != websocket.MessageBinary || !strings.Contains(string(notice), "点击此窗格，再点击右上角“重新连接”") {
+				t.Fatalf("notice = %q kind=%v err=%v", notice, kind, err)
+			}
+			kind, payload, err := ws.Read(ctx)
+			if err != nil || kind != websocket.MessageText {
+				t.Fatalf("exit control = %q kind=%v err=%v", payload, kind, err)
+			}
+			var ended struct {
+				Type, Reason string
+				Notified     bool
+			}
+			// shell_exit would close the pane and hide the notice.
+			if err := json.Unmarshal(payload, &ended); err != nil || ended.Type != "exit" || ended.Reason != "session_end" || !ended.Notified {
+				t.Fatalf("exit control = %s (%v)", payload, err)
+			}
+		})
+	}
+}
+
+// keepAlivePair returns a server connection with a running reader, which ws.Ping
+// needs, and the client end of the same WebSocket.
+func keepAlivePair(t *testing.T) (server, client *websocket.Conn) {
+	t.Helper()
+	accepted := make(chan *websocket.Conn, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		accepted <- ws
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { client.CloseNow() })
+	server = <-accepted
+	t.Cleanup(func() { server.CloseNow() })
+	server.CloseRead(context.Background())
+	return server, client
+}
+
+func TestKeepAliveToleratesAnsweringPeer(t *testing.T) {
+	server, client := keepAlivePair(t)
+	client.CloseRead(context.Background()) // Answers pings, as a browser does.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dead := make(chan struct{})
+	go keepAlive(ctx, server, 5*time.Millisecond, time.Second, 1, func() { close(dead) })
+	select {
+	case <-dead:
+		t.Fatal("answering peer declared dead")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestKeepAliveDetectsSilentPeerAfterToleratedMisses(t *testing.T) {
+	server, _ := keepAlivePair(t) // The client never reads, so pongs never arrive.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	const interval, timeout, missed = 5 * time.Millisecond, 20 * time.Millisecond, 3
+	dead := make(chan struct{})
+	started := time.Now()
+	go keepAlive(ctx, server, interval, timeout, missed, func() { close(dead) })
+	select {
+	case <-dead:
+		if elapsed := time.Since(started); elapsed < missed*timeout {
+			t.Fatalf("declared dead after %v, before %d misses", elapsed, missed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("silent peer never detected")
+	}
+}
+
+func TestKeepAliveStopsWithContext(t *testing.T) {
+	server, _ := keepAlivePair(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		keepAlive(ctx, server, time.Millisecond, time.Minute, 1, func() { t.Error("cancelled keepalive reported a dead peer") })
+	}()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("keepalive outlived its context")
 	}
 }

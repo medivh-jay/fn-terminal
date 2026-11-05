@@ -1,5 +1,5 @@
 appname=fnterminal
-version=0.1.12
+version=0.1.15
 display_name=飞牛终端
 desc=以当前 NAS 本地用户身份打开交互式终端。首次使用需管理员启用。
 source=thirdparty
@@ -14,4 +14,4 @@ ctl_stop=true
 checkport=false
 micro_app=true
 disable_authorization_path=true
-changelog=新增常见 FnDepot 源格式与 V2 兼容索引，完善演示截图和发布流程。
+changelog=修复 Shell 闲置后输入无响应：保持连接心跳以避免被网关断开；连接或会话结束后在终端内提示原因，按键时提示重新连接。

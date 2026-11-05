@@ -24,6 +24,22 @@ import (
 
 const Prefix = "/app/fnterminal"
 
+// Gateways commonly drop tunnels silent for about a minute, so ping well inside
+// that window. Pings stop at the web process and never refresh the broker's idle
+// timer. Several misses are tolerated so a brief network stall keeps its shell.
+const (
+	keepAliveInterval  = 25 * time.Second
+	keepAliveTimeout   = 10 * time.Second
+	keepAliveMaxMissed = 3
+)
+
+// Written into the terminal because the page otherwise keeps showing a live-looking
+// prompt while it discards every keystroke.
+var expiryNotices = map[string]string{
+	wire.ReasonIdleTimeout: "\r\n\x1b[33m[飞牛终端] 长时间无操作，会话已断开。请点击此窗格，再点击右上角“重新连接”打开新的 Shell。\x1b[0m\r\n",
+	wire.ReasonMaxDuration: "\r\n\x1b[33m[飞牛终端] 已达到会话时长上限，会话已断开。请点击此窗格，再点击右上角“重新连接”打开新的 Shell。\x1b[0m\r\n",
+}
+
 //go:embed static
 var assets embed.FS
 
@@ -199,6 +215,35 @@ func decodeControl(b []byte) (control, error) {
 	}
 	return c, nil
 }
+
+// keepAlive pings until ctx ends and reports a peer that stopped answering.
+// ws.Ping needs a concurrent ws.Read to observe the pong.
+func keepAlive(ctx context.Context, ws *websocket.Conn, interval, timeout time.Duration, maxMissed int, dead func()) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	missed := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		c, stop := context.WithTimeout(ctx, timeout)
+		e := ws.Ping(c)
+		stop()
+		if ctx.Err() != nil {
+			return
+		}
+		if e == nil {
+			missed = 0
+			continue
+		}
+		if missed++; missed >= maxMissed {
+			dead()
+			return
+		}
+	}
+}
 func serveWS(w http.ResponseWriter, r *http.Request, c identity.Claims, connect Connector, logger *slog.Logger) {
 	conn, e := connect(r.Context(), c, terminal.Size{Rows: 24, Cols: 80})
 	if e != nil {
@@ -265,6 +310,11 @@ func serveWS(w http.ResponseWriter, r *http.Request, c identity.Claims, connect 
 		}
 	}()
 	defer func() { cancel(); conn.Close(); ws.CloseNow(); <-readerDone }()
+	go keepAlive(ctx, ws, keepAliveInterval, keepAliveTimeout, keepAliveMaxMissed, func() {
+		logger.Info("terminal websocket peer unresponsive", "uid", c.UID)
+		// Unblocks the reader, whose exit releases the broker stream and PTY.
+		_ = ws.CloseNow()
+	})
 	for {
 		k, p, e := wire.Read(conn)
 		if e != nil {
@@ -293,7 +343,12 @@ func serveWS(w http.ResponseWriter, r *http.Request, c identity.Claims, connect 
 			if json.Unmarshal(p, &ended) == nil && ended.Reason == "shell_exit" {
 				reason = "shell_exit"
 			}
-			payload, _ := json.Marshal(map[string]string{"type": "exit", "message": "会话已结束", "reason": reason})
+			// Tells the page the terminal already explains this end, so it adds no second notice.
+			notified := false
+			if notice, ok := expiryNotices[ended.Reason]; ok {
+				notified = send(websocket.MessageBinary, []byte(notice)) == nil
+			}
+			payload, _ := json.Marshal(map[string]any{"type": "exit", "message": "会话已结束", "reason": reason, "notified": notified})
 			if send(websocket.MessageText, payload) != nil {
 				return
 			}

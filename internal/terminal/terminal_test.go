@@ -3,6 +3,7 @@ package terminal
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fn-terminal/internal/identity"
 	"io"
 	"os"
@@ -272,13 +273,30 @@ func TestCloseKillsHangupIgnoringJobInSeparateProcessGroup(t *testing.T) {
 	}
 }
 func TestMonitorExpiresIdleSession(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 	m := NewActivity()
-	go m.Monitor(ctx, cancel, 30*time.Millisecond, time.Second)
+	go m.Monitor(ctx, cancel, 30*time.Millisecond, time.Minute)
 	select {
 	case <-ctx.Done():
-	case <-time.After(time.Second):
+		if !errors.Is(context.Cause(ctx), ErrIdleExpired) {
+			t.Fatalf("cause = %v", context.Cause(ctx))
+		}
+	case <-time.After(5 * time.Second):
 		t.Fatal("idle session never expired")
+	}
+}
+func TestMonitorExpiresLongSessionDespiteActivity(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	m := NewActivity()
+	go m.Monitor(ctx, cancel, time.Minute, 30*time.Millisecond)
+	select {
+	case <-ctx.Done():
+		if !errors.Is(context.Cause(ctx), ErrMaxExpired) {
+			t.Fatalf("cause = %v", context.Cause(ctx))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("long session never expired")
 	}
 }

@@ -16,6 +16,12 @@ const (
 	MaxPayload = 32 * 1024
 )
 
+// Exit frame reasons for sessions ended by an administrator limit.
+const (
+	ReasonIdleTimeout = "idle_timeout"
+	ReasonMaxDuration = "max_duration"
+)
+
 func Read(r io.Reader) (byte, []byte, error) {
 	var h [5]byte
 	if _, err := io.ReadFull(r, h[:]); err != nil {

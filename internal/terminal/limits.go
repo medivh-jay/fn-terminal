@@ -39,6 +39,13 @@ func (q *Quota) Acquire(uid uint32) (func(), error) {
 	}, nil
 }
 
+// Cancellation causes recorded when a session reaches an administrator limit.
+// They let the broker tell the user why the shell ended instead of just dropping it.
+var (
+	ErrIdleExpired = errors.New("terminal idle limit reached")
+	ErrMaxExpired  = errors.New("terminal duration limit reached")
+)
+
 type Activity struct {
 	last  atomic.Int64
 	start time.Time
@@ -46,7 +53,7 @@ type Activity struct {
 
 func NewActivity() *Activity { a := &Activity{start: time.Now()}; a.Touch(); return a }
 func (a *Activity) Touch()   { a.last.Store(time.Now().UnixNano()) }
-func (a *Activity) Monitor(ctx context.Context, cancel context.CancelFunc, idle, max time.Duration) {
+func (a *Activity) Monitor(ctx context.Context, cancel context.CancelCauseFunc, idle, max time.Duration) {
 	step := min(idle/4, max/4, time.Second)
 	if step < time.Millisecond {
 		step = time.Millisecond
@@ -58,8 +65,12 @@ func (a *Activity) Monitor(ctx context.Context, cancel context.CancelFunc, idle,
 		case <-ctx.Done():
 			return
 		case now := <-t.C:
-			if now.Sub(a.start) >= max || now.Sub(time.Unix(0, a.last.Load())) >= idle {
-				cancel()
+			if now.Sub(a.start) >= max {
+				cancel(ErrMaxExpired)
+				return
+			}
+			if now.Sub(time.Unix(0, a.last.Load())) >= idle {
+				cancel(ErrIdleExpired)
 				return
 			}
 		}

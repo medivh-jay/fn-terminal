@@ -142,8 +142,16 @@ func (s *Server) handle(parent context.Context, c *net.UnixConn) {
 		return
 	}
 	defer sess.Close()
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(parent)
+	defer cancel(nil)
+	_ = c.SetDeadline(time.Time{})
+	var writeMu sync.Mutex
+	send := func(k byte, p []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		return wire.Write(c, k, p)
+	}
 	active := terminal.NewActivity()
 	go active.Monitor(ctx, cancel, time.Duration(s.Config.IdleSeconds)*time.Second, time.Duration(s.Config.MaxSeconds)*time.Second)
 	stop := make(chan struct{})
@@ -151,6 +159,13 @@ func (s *Server) handle(parent context.Context, c *net.UnixConn) {
 	go func() {
 		select {
 		case <-ctx.Done():
+			// Closing the stream first would leave the web side with a bare EOF and
+			// no way to explain the disconnect; the frame stays readable after Close.
+			if reason := expiryReason(context.Cause(ctx)); reason != "" {
+				slog.Info("terminal expired", "uid", a.UID, "reason", reason)
+				ended, _ := json.Marshal(map[string]string{"message": "会话已结束", "reason": reason})
+				_ = send(wire.Exit, ended)
+			}
 			c.Close()
 			sess.Close()
 		case <-sess.Done():
@@ -164,14 +179,6 @@ func (s *Server) handle(parent context.Context, c *net.UnixConn) {
 		case <-stop:
 		}
 	}()
-	_ = c.SetDeadline(time.Time{})
-	var writeMu sync.Mutex
-	send := func(k byte, p []byte) error {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		return wire.Write(c, k, p)
-	}
 	ready, _ := json.Marshal(h.Claims)
 	if send(wire.Ready, ready) != nil {
 		return
@@ -179,7 +186,7 @@ func (s *Server) handle(parent context.Context, c *net.UnixConn) {
 	slog.Info("terminal opened", "uid", a.UID)
 	defer slog.Info("terminal closed", "uid", a.UID)
 	go func() {
-		defer cancel()
+		defer cancel(nil)
 		for {
 			k, p, e := wire.Read(c)
 			if e != nil {
@@ -218,6 +225,16 @@ func (s *Server) handle(parent context.Context, c *net.UnixConn) {
 			return
 		}
 	}
+}
+
+func expiryReason(cause error) string {
+	switch {
+	case errors.Is(cause, terminal.ErrIdleExpired):
+		return wire.ReasonIdleTimeout
+	case errors.Is(cause, terminal.ErrMaxExpired):
+		return wire.ReasonMaxDuration
+	}
+	return ""
 }
 
 func shellExitReason(ctx context.Context, done <-chan struct{}) string {
