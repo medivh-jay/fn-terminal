@@ -319,3 +319,45 @@ func TestShellExitReasonCancellationInterruptsReapingWait(t *testing.T) {
 		t.Fatalf("cancelled reaping wait misreported as %q", reason)
 	}
 }
+
+// The web layer can only explain a disconnect if the Exit frame precedes the EOF.
+func TestBrokerReportsIdleExpiryBeforeClosing(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "b.sock")
+	l, e := net.ListenUnix("unix", &net.UnixAddr{Name: p, Net: "unix"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer l.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a, e := identity.Lookup(uint32(os.Getuid()))
+	if e != nil {
+		t.Fatal(e)
+	}
+	c := config.Defaults()
+	c.Enabled = true
+	c.IdleSeconds = 1
+	s := New(c, uint32(os.Getuid()))
+	s.Development = true
+	go s.Serve(ctx, l)
+	conn, e := Dial(ctx, p, identity.Claims{UID: a.UID, Username: a.Username}, terminal.Size{Rows: 24, Cols: 80})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	for {
+		kind, b, e := wire.Read(conn)
+		if e != nil {
+			t.Fatalf("stream ended without an expiry reason: %v", e)
+		}
+		if kind != wire.Exit {
+			continue
+		}
+		var ended struct{ Reason string }
+		if e = json.Unmarshal(b, &ended); e != nil || ended.Reason != wire.ReasonIdleTimeout {
+			t.Fatalf("exit frame = %s (%v)", b, e)
+		}
+		return
+	}
+}
