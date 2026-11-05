@@ -14,7 +14,9 @@ export interface SessionEvents {
 const prefix = '/app/fnterminal';
 
 const terminalNotice = (text: string) => `\r\n\x1b[33m[飞牛终端] ${text}\x1b[0m\r\n`;
-const reconnectAdvice = '请点击右上角“重新连接”打开新的 Shell。';
+// The toolbar button acts on the focused pane, so in a split the pane must be
+// selected first; otherwise the button replaces the shell of a healthy neighbour.
+const reconnectAdvice = '请点击此窗格，再点击右上角“重新连接”打开新的 Shell。';
 // Keystrokes closer together than this count as one attempt, so typing a whole
 // command into a closed session prints one reminder rather than one per key.
 const reminderQuietMs = 3000;

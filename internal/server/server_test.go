@@ -317,7 +317,7 @@ func TestExpiredSessionExplainsDisconnectInTerminal(t *testing.T) {
 			}
 			go wire.Write(peer, wire.Exit, []byte(`{"reason":"`+reason+`"}`))
 			kind, notice, err := ws.Read(ctx)
-			if err != nil || kind != websocket.MessageBinary || !strings.Contains(string(notice), "重新连接") {
+			if err != nil || kind != websocket.MessageBinary || !strings.Contains(string(notice), "点击此窗格，再点击右上角“重新连接”") {
 				t.Fatalf("notice = %q kind=%v err=%v", notice, kind, err)
 			}
 			kind, payload, err := ws.Read(ctx)

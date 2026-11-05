@@ -162,7 +162,7 @@ test('an unexplained session end is announced in the terminal', async ({ page })
   await page.goto('/app/fnterminal/');
   await connected(page);
   end!();
-  await expect(visibleRows(page)).toContainText('会话已结束。请点击右上角“重新连接”');
+  await expect(visibleRows(page)).toContainText('会话已结束。请点击此窗格，再点击右上角“重新连接”');
   expect(await occurrences(page, lostNotice)).toBe(0);
 });
 
@@ -194,6 +194,52 @@ test('a connection lost inside a full-screen program stays readable and quiet', 
   expect(await occurrences(page, inputNotice)).toBe(0);
   await typeIntoClosed(page, 'q');
   await expect(visibleRows(page)).toContainText(inputNotice);
+});
+
+test('reconnecting a clicked lost pane leaves the shell in the other pane running', async ({
+  page,
+}) => {
+  const sockets: { closed: boolean; drop: () => void }[] = [];
+  await page.routeWebSocket('**/app/fnterminal/ws', (socket) => {
+    socket.connectToServer();
+    const entry = {
+      closed: false,
+      drop: () => socket.close({ code: 1011, reason: 'network interrupted' }),
+    };
+    socket.onClose(() => {
+      entry.closed = true;
+    });
+    sockets.push(entry);
+  });
+  await page.goto('/app/fnterminal/');
+  await connected(page);
+  await panes(page).first().locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Control+Shift+Digit9');
+  await expect(panes(page)).toHaveCount(2);
+  await connected(page);
+  const [lost, healthy] = [panes(page).nth(0), panes(page).nth(1)];
+  await command(page, healthy, "KEEP_VALUE=KEPT; printf '\\nREADY_'; printf 'B\\n'");
+  await expect(healthy.locator('.xterm-rows')).toContainText('READY_B');
+
+  // The neighbour keeps focus, so the toolbar still describes the healthy shell.
+  sockets[0].drop();
+  await expect(lost.locator('.xterm-rows')).toContainText('请点击此窗格');
+  await expect(healthy).toHaveClass(/is-focused/);
+  await expect(page.locator('#connection-text')).toHaveText('已连接');
+
+  await lost.locator('.xterm-screen').click();
+  await expect(lost).toHaveClass(/is-focused/);
+  await expect(page.locator('#connection-text')).toHaveText('会话已结束');
+  await page.getByRole('button', { name: '重新连接', exact: true }).click();
+  await connected(page);
+  await expect(lost.locator('.xterm-rows')).not.toContainText('连接已断开');
+
+  expect(sockets).toHaveLength(3);
+  expect(sockets[1].closed).toBe(false);
+  await command(page, healthy, 'printf \'\\nSTILL_%s\\n\' "$KEEP_VALUE"');
+  await expect(healthy.locator('.xterm-rows')).toContainText('STILL_KEPT');
+  await command(page, lost, "printf '\\nNEW_'; printf 'A\\n'");
+  await expect(lost.locator('.xterm-rows')).toContainText('NEW_A');
 });
 
 test('last shell exit closes its script-opened app window', async ({ page }) => {

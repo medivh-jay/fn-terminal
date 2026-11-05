@@ -36,8 +36,8 @@ const (
 // Written into the terminal because the page otherwise keeps showing a live-looking
 // prompt while it discards every keystroke.
 var expiryNotices = map[string]string{
-	wire.ReasonIdleTimeout: "\r\n\x1b[33m[飞牛终端] 长时间无操作，会话已断开。请点击右上角“重新连接”打开新的 Shell。\x1b[0m\r\n",
-	wire.ReasonMaxDuration: "\r\n\x1b[33m[飞牛终端] 已达到会话时长上限，会话已断开。请点击右上角“重新连接”打开新的 Shell。\x1b[0m\r\n",
+	wire.ReasonIdleTimeout: "\r\n\x1b[33m[飞牛终端] 长时间无操作，会话已断开。请点击此窗格，再点击右上角“重新连接”打开新的 Shell。\x1b[0m\r\n",
+	wire.ReasonMaxDuration: "\r\n\x1b[33m[飞牛终端] 已达到会话时长上限，会话已断开。请点击此窗格，再点击右上角“重新连接”打开新的 Shell。\x1b[0m\r\n",
 }
 
 //go:embed static

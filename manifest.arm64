@@ -1,5 +1,5 @@
 appname=fnterminal
-version=0.1.14
+version=0.1.15
 display_name=飞牛终端
 desc=以当前 NAS 本地用户身份打开交互式终端。首次使用需管理员启用。
 source=thirdparty

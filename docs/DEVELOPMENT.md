@@ -46,7 +46,8 @@ Web 服务是认证信任链的一部分：攻破它仍可能滥用辅助服务�
 - 默认每用户最多 4 条、应用总计 32 条会话，限制在辅助服务执行。
 - 15 分钟无实际终端输入输出，或达到总时长 1 小时后关闭。心跳和窗口尺寸变化不刷新闲置计时。到达上限时先在终端内显示断开原因，再结束会话；服务日志记录 `terminal expired` 及 `idle_timeout` / `max_duration`。
 - Web 服务每 25 秒发送一次 WebSocket Ping，让空闲连接不被网关按无流量断开；连续 3 次（每次等待 10 秒）收不到 Pong 视为对端失联，结束会话并释放配额。
-- 连接关闭后页面在终端内提示（到达上限时沿用服务端的原因提示），并关闭鼠标和焦点上报；此后按键或粘贴不再静默丢弃，而是提示输入未发送并引导重新连接，连续输入只提示一次。页面不会自动重连，因为重连得到的是新 Shell。
+- 连接关闭后页面在终端内提示（到达上限时沿用服务端的原因提示），并关闭鼠标和焦点上报；此后按键或粘贴不再静默丢弃，而是提示输入未发送并引导重新连接，连续输入只提示一次。页面不会自动重连，因为重连得到的是新 Shell。工具栏的“重新连接”只作用于当前聚焦的窗格，且会直接结束该窗格的 Shell，所以提示要求先点击断开的窗格。
+- 已知行为：断开时如果停在 vim、htop 等使用备用屏的程序里，页面不会退出备用屏，xterm 仍会把滚轮转成方向键，因此滚动也会显示“输入未发送”。这不影响其他窗格，也没有内容发出。
 - 每条连接绑定创建时的 UID，客户端无法通过消息或 URL 参数切换用户。
 - 浏览器关闭、网络断开或重连时结束原会话和同一 POSIX session 中的作业进程组；shell 自行退出时也会在短暂输出排空后关闭会话并释放配额。不会自动恢复旧 shell，重连明确创建新会话。主动通过 setsid 脱离会话的守护进程不属于这一清理保证。
 - 输出使用二进制字节帧，支持跨读取边界的 UTF-8；浏览器每渲染一个数据块发送 ACK，最多保留 8 个未确认块，超时断开慢客户端。
@@ -101,7 +102,7 @@ Go 源码不会随生命周期 cmd 打入安装包。编译后二进制及配置
 
 应用信息直接维护在根目录静态 [manifest](../manifest)，打包过程原样复制，不再生成或通过环境变量覆盖它。修改名称、版本、维护者、联系方式、兼容版本或更新说明时，直接编辑该文件。根 manifest 的架构是 `x86`；ARM 使用独立静态 [manifest.arm64](../manifest.arm64)，除 `platform=arm` 外其余字段必须一致，脚本会拒绝不一致的 ARM 构建。不要把包含单架构二进制的包声明为 `platform=all`。
 
-当前版本 `0.1.14`，产物为 `build/fnterminal-0.1.14-amd64.fpk`。构建脚本从静态 manifest 读取版本并写入 Go 二进制，打包文件名也读取该文件；后续发版不需要改脚本中的版本常量。`maintainer` / `distributor` 为 `medivh-jay`，开发者与发布者链接均指向 [项目仓库](https://github.com/medivh-jay/fn-terminal)。最低版本仍应按实际兼容性填写，未声明不表示兼容所有 fnOS。
+当前版本 `0.1.15`，产物为 `build/fnterminal-0.1.15-amd64.fpk`。构建脚本从静态 manifest 读取版本并写入 Go 二进制，打包文件名也读取该文件；后续发版不需要改脚本中的版本常量。`maintainer` / `distributor` 为 `medivh-jay`，开发者与发布者链接均指向 [项目仓库](https://github.com/medivh-jay/fn-terminal)。最低版本仍应按实际兼容性填写，未声明不表示兼容所有 fnOS。
 
 脚本会创建独立的 `build/fpk-amd64.*/` 打包目录，检查 ELF 架构、向导、生命周期、图标和默认禁用状态，再调用官方 fnpack。非 root 构建使用 util-linux 的 `unshare --user --map-root-user`，仅在新用户命名空间内把构建者映射为 root，以生成正确的 root 归属元数据；不需要构建机 sudo 权限。最终检查覆盖外层与 app.tgz 内层 UID/GID、生命周期权限和官方 payload checksum，避免把构建机的 UID 1000 带进特权安装包。
 
@@ -132,7 +133,7 @@ GitHub 仓库需公开且已发布至少一个 Release。`fnpack.json` 是 Relea
 上传代码后，日常发版流程：
 
 1. 编辑两份静态 manifest 的版本与更新说明，保持公共字段一致。
-2. 提交代码，推送与 manifest 相符的 `v版本号` 标签，例如 `v0.1.14`。
+2. 提交代码，推送与 manifest 相符的 `v版本号` 标签，例如 `v0.1.15`。
 3. [Release 工作流](../.github/workflows/release.yml)读取当前 GitHub 仓库名，执行构建与检查，生成 x86 / ARM FPK、`fnpack.json`、`fnpack.v2.json` 和 `SHA256SUMS`，上传完整附件后发布 Release。
 4. 在应用坏心添加上述源地址，刷新即可发现应用。升级只需继续推送新版本标签。
 
@@ -147,9 +148,9 @@ GitHub 仓库需公开且已发布至少一个 Release。`fnpack.json` 是 Relea
 ./scripts/package.sh arm64
 python3 scripts/build_source.py \
   --repository medivh-jay/fn-terminal \
-  --tag v0.1.14 \
+  --tag v0.1.15 \
   --output build/fnpack.json \
-  build/fnterminal-0.1.14-amd64.fpk build/fnterminal-0.1.14-arm64.fpk
+  build/fnterminal-0.1.15-amd64.fpk build/fnterminal-0.1.15-arm64.fpk
 ```
 
 Release 附件名要与本地 FPK 文件名一致。版本标签必须含根目录 `ICON_256.PNG`，源使用对应标签的图标直链。仓库推送、GitHub Actions 云端运行和实际商店安装尚需发布后验收。
