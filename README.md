@@ -38,13 +38,9 @@ _截图来自本地演示环境，展示应用实际界面。_
 <details>
 <summary>通过应用坏心订阅更新</summary>
 
-仓库发布 Release 后，可在应用坏心中添加以下 JSON 源地址：
-
 ```text
 https://github.com/medivh-jay/fn-terminal/releases/latest/download/fnpack.json
 ```
-
-默认源使用以应用 ID 为顶层键、通过 `arch_diff` 区分架构的格式，提供对应架构的安装包。应用坏心使用 JSON 源地址，不能直接填写 GitHub 仓库首页；发布与源索引说明见 [开发与维护](docs/DEVELOPMENT.md#github-release-与应用坏心源)。
 
 </details>
 
