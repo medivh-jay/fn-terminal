@@ -59,8 +59,11 @@ func TestWebSocketExitReasonsAreAllowlisted(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var ended struct{ Type, Reason, Message string }
-			if err := json.Unmarshal(payload, &ended); err != nil || kind != websocket.MessageText || ended.Type != "exit" || ended.Reason != tc.want || ended.Message != "会话已结束" {
+			var ended struct {
+				Type, Reason, Message string
+				Notified              bool
+			}
+			if err := json.Unmarshal(payload, &ended); err != nil || kind != websocket.MessageText || ended.Type != "exit" || ended.Reason != tc.want || ended.Message != "会话已结束" || ended.Notified {
 				t.Fatalf("unexpected exit control: %s (%v)", payload, err)
 			}
 			if strings.Contains(string(payload), "private details") || strings.Contains(string(payload), "secret") {
@@ -321,9 +324,12 @@ func TestExpiredSessionExplainsDisconnectInTerminal(t *testing.T) {
 			if err != nil || kind != websocket.MessageText {
 				t.Fatalf("exit control = %q kind=%v err=%v", payload, kind, err)
 			}
-			var ended struct{ Type, Reason string }
+			var ended struct {
+				Type, Reason string
+				Notified     bool
+			}
 			// shell_exit would close the pane and hide the notice.
-			if err := json.Unmarshal(payload, &ended); err != nil || ended.Type != "exit" || ended.Reason != "session_end" {
+			if err := json.Unmarshal(payload, &ended); err != nil || ended.Type != "exit" || ended.Reason != "session_end" || !ended.Notified {
 				t.Fatalf("exit control = %s (%v)", payload, err)
 			}
 		})

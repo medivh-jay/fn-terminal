@@ -1,6 +1,6 @@
 export type ServerMessage =
   | { type: 'ready'; uid: number; username: string }
-  | { type: 'exit'; message: string; reason: 'shell_exit' | 'session_end' };
+  | { type: 'exit'; message: string; reason: 'shell_exit' | 'session_end'; notified: boolean };
 
 export function chunkInput(text: string): Uint8Array<ArrayBuffer>[] {
   const bytes = new TextEncoder().encode(text);
@@ -26,6 +26,7 @@ export function parseServerMessage(text: string): ServerMessage | null {
         type: 'exit',
         message: value.message,
         reason: value.reason === 'shell_exit' ? 'shell_exit' : 'session_end',
+        notified: value.notified === true,
       };
   } catch {
     /* An invalid control message never changes connection state. */

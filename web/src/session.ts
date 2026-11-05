@@ -13,6 +13,17 @@ export interface SessionEvents {
 
 const prefix = '/app/fnterminal';
 
+const terminalNotice = (text: string) => `\r\n\x1b[33m[飞牛终端] ${text}\x1b[0m\r\n`;
+const reconnectAdvice = '请点击右上角“重新连接”打开新的 Shell。';
+// Keystrokes closer together than this count as one attempt, so typing a whole
+// command into a closed session prints one reminder rather than one per key.
+const reminderQuietMs = 3000;
+// A shell can die inside a full-screen program. CAN aborts an escape sequence cut
+// off mid-stream, soft reset restores the cursor, colours and scroll region, and
+// the rest stop mouse and focus reports from counting as input to a dead session.
+const releaseTerminal =
+  '\x18\x1b[!p\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?2004l';
+
 export class TerminalSession {
   readonly element = document.createElement('div');
   readonly terminal: Terminal;
@@ -22,6 +33,8 @@ export class TerminalSession {
   private request: AbortController | undefined;
   private timeout: ReturnType<typeof setTimeout> | undefined;
   private focused = false;
+  private closureAnnounced = false;
+  private lastClosedInputAt = 0;
   disposed = false;
   hadSession = false;
   username = '';
@@ -57,8 +70,7 @@ export class TerminalSession {
     this.terminal.open(this.element);
     this.terminal.onData((text) => this.sendInput(text));
     this.terminal.onBinary((data) => {
-      if (this.socket?.readyState === WebSocket.OPEN)
-        this.socket.send(Uint8Array.from(data, (ch) => ch.charCodeAt(0)));
+      this.inputSocket()?.send(Uint8Array.from(data, (ch) => ch.charCodeAt(0)));
     });
   }
 
@@ -113,6 +125,7 @@ export class TerminalSession {
     this.socket?.close();
     this.socket = null;
     this.hadSession = false;
+    this.closureAnnounced = false;
     this.terminal.reset();
     this.update('connecting', '正在连接', '正在验证当前用户…', '随后将打开你的 Shell');
     this.request = new AbortController();
@@ -200,6 +213,7 @@ export class TerminalSession {
         if (message?.type === 'exit') {
           this.update('closed', '会话已结束');
           if (this.hadSession && message.reason === 'shell_exit') this.events.exited(this);
+          else this.announceClosure(message.notified ? '' : `会话已结束。${reconnectAdvice}`);
         }
       };
       ws.onclose = () => {
@@ -222,7 +236,10 @@ export class TerminalSession {
               '无法连接终端',
               '终端连接未能建立，请检查网络或已打开的终端数量后重试。',
             );
-        } else this.update('closed', '会话已结束');
+        } else {
+          this.update('closed', '会话已结束');
+          this.announceClosure(`连接已断开，无法继续输入。${reconnectAdvice}`);
+        }
       };
       ws.onerror = () => {
         if (live()) {
@@ -247,13 +264,40 @@ export class TerminalSession {
     }
   }
 
+  /** Runs once per connection; an empty message means the server already explained. */
+  private announceClosure(message: string): void {
+    if (!this.hadSession || this.closureAnnounced) return;
+    this.closureAnnounced = true;
+    this.lastClosedInputAt = performance.now();
+    this.terminal.write(releaseTerminal + (message && terminalNotice(message)));
+  }
+
+  private remindClosed(): void {
+    const now = performance.now();
+    const quiet = now - this.lastClosedInputAt >= reminderQuietMs;
+    this.lastClosedInputAt = now;
+    if (quiet) this.terminal.write(terminalNotice(`连接已断开，输入未发送。${reconnectAdvice}`));
+  }
+
+  /** The socket input may go to, or null after telling the user why it cannot. */
+  private inputSocket(): WebSocket | null {
+    if (this.disposed) return null;
+    const open = this.socket?.readyState === WebSocket.OPEN;
+    if (this.hadSession && (!open || this.state !== 'connected')) {
+      this.remindClosed();
+      return null;
+    }
+    return open ? this.socket : null;
+  }
+
   sendInput(text: string): void {
-    if (this.disposed || this.socket?.readyState !== WebSocket.OPEN) return;
-    if (this.socket.bufferedAmount > 1024 * 1024) {
+    const socket = this.inputSocket();
+    if (!socket) return;
+    if (socket.bufferedAmount > 1024 * 1024) {
       this.events.notice('连接发送缓慢，请稍后再输入。');
       return;
     }
-    for (const bytes of chunkInput(text)) this.socket.send(bytes);
+    for (const bytes of chunkInput(text)) socket.send(bytes);
   }
 
   close(): void {

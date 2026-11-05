@@ -343,10 +343,12 @@ func serveWS(w http.ResponseWriter, r *http.Request, c identity.Claims, connect 
 			if json.Unmarshal(p, &ended) == nil && ended.Reason == "shell_exit" {
 				reason = "shell_exit"
 			}
+			// Tells the page the terminal already explains this end, so it adds no second notice.
+			notified := false
 			if notice, ok := expiryNotices[ended.Reason]; ok {
-				_ = send(websocket.MessageBinary, []byte(notice))
+				notified = send(websocket.MessageBinary, []byte(notice)) == nil
 			}
-			payload, _ := json.Marshal(map[string]string{"type": "exit", "message": "会话已结束", "reason": reason})
+			payload, _ := json.Marshal(map[string]any{"type": "exit", "message": "会话已结束", "reason": reason, "notified": notified})
 			if send(websocket.MessageText, payload) != nil {
 				return
 			}
