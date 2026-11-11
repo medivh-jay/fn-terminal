@@ -3,7 +3,7 @@ import './style.css';
 import { TerminalSession } from './session';
 import { PaneLayout, type Pane, type SplitDirection } from './layout';
 import { TerminalContextMenu } from './context-menu';
-import { copySelection, pasteInto } from './clipboard';
+import { copySelection, isCopyShortcut, pasteInto } from './clipboard';
 import { closeApplication } from './application';
 import {
   themes,
@@ -390,6 +390,15 @@ deck.addEventListener(
 deck.addEventListener(
   'keydown',
   (event) => {
+    if (isCopyShortcut(event)) {
+      const owner = fromTarget(event.target);
+      if (!owner) return;
+      // Keep the key away from the shell and from the browser's inspect-element shortcut.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) copySelection(owner.pane.value.session, notice);
+      return;
+    }
     const direction = splitShortcut(event);
     if (direction) {
       const owner = fromTarget(event.target);

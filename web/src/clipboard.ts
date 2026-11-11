@@ -1,6 +1,17 @@
 import type { TerminalSession } from './session';
 
-const pasteShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : 'Ctrl+Shift+V';
+export const applePlatform = /Mac|iPhone|iPad/.test(navigator.platform);
+const pasteShortcut = applePlatform ? '⌘V' : 'Ctrl+Shift+V';
+
+// Ctrl+Shift+C is the usual terminal copy key off macOS, where ⌘C already copies
+// natively and Ctrl+C must stay the interrupt key.
+export function isCopyShortcut(event: KeyboardEvent): boolean {
+  if (applePlatform || !event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey)
+    return false;
+  if (event.isComposing) return false;
+  // Prefer the typed letter; fall back to the physical key on non-Latin layouts.
+  return event.key.toLowerCase() === 'c' || (!/^[a-z]$/i.test(event.key) && event.code === 'KeyC');
+}
 
 // The async Clipboard API only exists in secure contexts (HTTPS or localhost),
 // and fnOS is commonly opened over plain HTTP on a LAN address. Copying from a
