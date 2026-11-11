@@ -85,3 +85,74 @@ test('copy falls back when a secure context rejects the Clipboard API', async ({
   await expect(page.locator('#notice')).toHaveText('已复制选中文字。');
   expect((await systemClipboard(page)).trim()).toBe('DENIED_COPY');
 });
+
+test.describe('Ctrl+Shift+C copy shortcut', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).realClipboard = navigator.clipboard;
+      Object.defineProperty(Navigator.prototype, 'clipboard', {
+        configurable: true,
+        get: () => undefined,
+      });
+      // Read after dispatch whether anything cancelled the browser's default action.
+      document.addEventListener(
+        'keydown',
+        (event) => {
+          if (event.code === 'KeyC' && event.ctrlKey && event.shiftKey)
+            setTimeout(() => ((window as any).copyKeyPrevented = event.defaultPrevented));
+        },
+        true,
+      );
+    });
+  });
+
+  test('copies over HTTP without sending the key to the shell', async ({ page }) => {
+    await page.goto('/app/fnterminal/');
+    await expect(page.locator('#connection-text')).toHaveText('已连接');
+    await page.evaluate(() => (window as any).realClipboard.writeText('BEFORE'));
+    await selectMarker(page, 'KEY_COPY');
+    // Leave a half-typed command so a leaked ^C or "C" would change what runs.
+    await pane(page).locator('.xterm-helper-textarea').focus();
+    await page.keyboard.type("printf '%s\\n' KEEP_");
+    const row = pane(page)
+      .locator('.xterm-rows > div')
+      .filter({ hasText: /^KEY_COPY\s*$/ });
+    const box = (await row.boundingBox())!;
+    await page.mouse.dblclick(box.x + 20, box.y + box.height / 2);
+    await page.keyboard.press('Control+Shift+C');
+    await expect(page.locator('#notice')).toHaveText('已复制选中文字。');
+    expect((await systemClipboard(page)).trim()).toBe('KEY_COPY');
+    await expect.poll(() => page.evaluate(() => (window as any).copyKeyPrevented)).toBe(true);
+    await page.keyboard.type('LINE');
+    await page.keyboard.press('Enter');
+    await expect(
+      pane(page)
+        .locator('.xterm-rows > div')
+        .filter({ hasText: /^KEEP_LINE\s*$/ }),
+    ).toBeVisible();
+  });
+
+  test('without a selection only explains what to do', async ({ page }) => {
+    await page.goto('/app/fnterminal/');
+    await expect(page.locator('#connection-text')).toHaveText('已连接');
+    await pane(page).locator('.xterm-helper-textarea').focus();
+    await page.keyboard.press('Control+Shift+C');
+    await expect(page.locator('#notice')).toHaveText('先在终端中选中要复制的文字。');
+    await expect.poll(() => page.evaluate(() => (window as any).copyKeyPrevented)).toBe(true);
+  });
+
+  test('is left to the browser on macOS', async ({ page }) => {
+    await page.addInitScript(() =>
+      Object.defineProperty(Navigator.prototype, 'platform', {
+        configurable: true,
+        get: () => 'MacIntel',
+      }),
+    );
+    await page.goto('/app/fnterminal/');
+    await expect(page.locator('#connection-text')).toHaveText('已连接');
+    await pane(page).locator('.xterm-helper-textarea').focus();
+    await page.keyboard.press('Control+Shift+C');
+    await expect.poll(() => page.evaluate(() => (window as any).copyKeyPrevented)).toBe(false);
+    await expect(page.locator('#notice')).toBeHidden();
+  });
+});

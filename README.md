@@ -53,6 +53,8 @@ https://github.com/medivh-jay/fn-terminal/releases/latest/download/fnpack.json
 | 上下分屏         | `Ctrl+)`，常见键盘对应 `Ctrl+Shift+0` |
 | 打开终端菜单     | 在窗格内右键，或按 `Shift+F10`        |
 | 调整窗格大小     | 拖动分隔条，或聚焦分隔条后使用方向键  |
+| 复制选中文字     | `Ctrl+Shift+C`（macOS 用 `⌘C`）       |
+| 粘贴             | `Ctrl+Shift+V`（macOS 用 `⌘V`）       |
 | 复制、粘贴、清屏 | 使用顶部工具栏；复制前先选中文字      |
 | 退出会话         | 输入 `exit`，自动关闭对应窗格         |
 
