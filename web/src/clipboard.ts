@@ -45,6 +45,7 @@ export function copySelection(session: TerminalSession, notice: (text: string) =
   // Embedding pages or browser policy can still reject the API in a secure context.
   void navigator.clipboard.writeText(selection).then(
     () => done(true),
+    // Relies on the click's transient user activation still being valid when the promise rejects.
     () => done(copyThroughSelection(selection)),
   );
 }
