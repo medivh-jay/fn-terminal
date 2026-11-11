@@ -102,7 +102,7 @@ Go 源码不会随生命周期 cmd 打入安装包。编译后二进制及配置
 
 应用信息直接维护在根目录静态 [manifest](../manifest)，打包过程原样复制，不再生成或通过环境变量覆盖它。修改名称、版本、维护者、联系方式、兼容版本或更新说明时，直接编辑该文件。根 manifest 的架构是 `x86`；ARM 使用独立静态 [manifest.arm64](../manifest.arm64)，除 `platform=arm` 外其余字段必须一致，脚本会拒绝不一致的 ARM 构建。不要把包含单架构二进制的包声明为 `platform=all`。
 
-当前版本 `0.1.15`，产物为 `build/fnterminal-0.1.15-amd64.fpk`。构建脚本从静态 manifest 读取版本并写入 Go 二进制，打包文件名也读取该文件；后续发版不需要改脚本中的版本常量。`maintainer` / `distributor` 为 `medivh-jay`，开发者与发布者链接均指向 [项目仓库](https://github.com/medivh-jay/fn-terminal)。最低版本仍应按实际兼容性填写，未声明不表示兼容所有 fnOS。
+当前版本 `0.1.16`，产物为 `build/fnterminal-0.1.16-amd64.fpk`。构建脚本从静态 manifest 读取版本并写入 Go 二进制，打包文件名也读取该文件；后续发版不需要改脚本中的版本常量。`maintainer` / `distributor` 为 `medivh-jay`，开发者与发布者链接均指向 [项目仓库](https://github.com/medivh-jay/fn-terminal)。最低版本仍应按实际兼容性填写，未声明不表示兼容所有 fnOS。
 
 脚本会创建独立的 `build/fpk-amd64.*/` 打包目录，检查 ELF 架构、向导、生命周期、图标和默认禁用状态，再调用官方 fnpack。非 root 构建使用 util-linux 的 `unshare --user --map-root-user`，仅在新用户命名空间内把构建者映射为 root，以生成正确的 root 归属元数据；不需要构建机 sudo 权限。最终检查覆盖外层与 app.tgz 内层 UID/GID、生命周期权限和官方 payload checksum，避免把构建机的 UID 1000 带进特权安装包。
 
@@ -133,7 +133,7 @@ GitHub 仓库需公开且已发布至少一个 Release。`fnpack.json` 是 Relea
 上传代码后，日常发版流程：
 
 1. 编辑两份静态 manifest 的版本与更新说明，保持公共字段一致。
-2. 提交代码，推送与 manifest 相符的 `v版本号` 标签，例如 `v0.1.15`。
+2. 提交代码，推送与 manifest 相符的 `v版本号` 标签，例如 `v0.1.16`。
 3. [Release 工作流](../.github/workflows/release.yml)读取当前 GitHub 仓库名，执行构建与检查，生成 x86 / ARM FPK、`fnpack.json`、`fnpack.v2.json` 和 `SHA256SUMS`，上传完整附件后发布 Release。
 4. 在应用坏心添加上述源地址，刷新即可发现应用。升级只需继续推送新版本标签。
 
@@ -148,9 +148,9 @@ GitHub 仓库需公开且已发布至少一个 Release。`fnpack.json` 是 Relea
 ./scripts/package.sh arm64
 python3 scripts/build_source.py \
   --repository medivh-jay/fn-terminal \
-  --tag v0.1.15 \
+  --tag v0.1.16 \
   --output build/fnpack.json \
-  build/fnterminal-0.1.15-amd64.fpk build/fnterminal-0.1.15-arm64.fpk
+  build/fnterminal-0.1.16-amd64.fpk build/fnterminal-0.1.16-arm64.fpk
 ```
 
 Release 附件名要与本地 FPK 文件名一致。版本标签必须含根目录 `ICON_256.PNG`，源使用对应标签的图标直链。仓库推送、GitHub Actions 云端运行和实际商店安装尚需发布后验收。
