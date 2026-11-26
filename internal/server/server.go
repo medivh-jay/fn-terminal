@@ -165,6 +165,12 @@ func validOrigin(r *http.Request, allowed []string) bool {
 		return false
 	}
 	origin := r.Header.Get("Origin")
+	if origin == opaqueOrigin {
+		// Some embedded WebViews (fnOS iOS app) send an opaque origin even for
+		// same-origin requests. Only accepted without an explicit allow list;
+		// the ticket endpoint's preflight-forcing header still blocks other sites.
+		return len(allowed) == 0
+	}
 	if !wellFormedOrigin(origin) {
 		return false
 	}
@@ -178,6 +184,8 @@ func validOrigin(r *http.Request, allowed []string) bool {
 	}
 	return true // A bound one-use ticket, rather than a rewritten Host, proves the source.
 }
+
+const opaqueOrigin = "null"
 
 func wellFormedOrigin(origin string) bool {
 	if len(origin) > 2048 || strings.Contains(origin, "*") {

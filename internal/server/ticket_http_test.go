@@ -144,3 +144,82 @@ func TestRejectedTicketDoesNotReachBrokerOrLeakItsSecret(t *testing.T) {
 		}
 	}
 }
+
+// The fnOS iOS app WebView sends "Origin: null" for same-origin requests.
+func TestOpaqueOriginFromIOSAppWebView(t *testing.T) {
+	const page = "https://nas.example:59367"
+	opaqueRequest := func() *http.Request {
+		r := ticketRequest(page)
+		r.Header.Set("Origin", "null")
+		r.Header.Del("Sec-Fetch-Site")
+		return r
+	}
+	for _, wsOrigin := range []string{"null", page} {
+		t.Run("websocket-origin-"+wsOrigin, func(t *testing.T) {
+			c := config.Defaults()
+			c.Enabled = true
+			peers := make(chan net.Conn, 1)
+			h := New(Options{Config: c, Development: true, Connect: func(context.Context, identity.Claims, terminal.Size) (net.Conn, error) {
+				local, peer := net.Pipe()
+				peers <- peer
+				return local, nil
+			}})
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, opaqueRequest())
+			var response struct {
+				Ticket string `json:"ticket"`
+			}
+			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &response) != nil || response.Ticket == "" {
+				t.Fatalf("ticket response: %d %s", w.Code, w.Body)
+			}
+			srv := httptest.NewServer(h)
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			dial := func(origin string) (*websocket.Conn, *http.Response, error) {
+				return websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+Prefix+"/ws", &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {origin}}, Subprotocols: []string{"fnterminal.v1", "fnterminal-ticket." + response.Ticket}})
+			}
+			if ws, _, err := dial("https://evil.example"); err == nil {
+				ws.CloseNow()
+				t.Fatal("ticket accepted from a different origin")
+			}
+			ws, _, err := dial(wsOrigin)
+			if err != nil {
+				t.Fatalf("connection failed: %v", err)
+			}
+			defer ws.CloseNow()
+			defer (<-peers).Close()
+			if _, data, err := ws.Read(ctx); err != nil || !strings.Contains(string(data), `"type":"ready"`) {
+				t.Fatalf("not ready: %s %v", data, err)
+			}
+		})
+	}
+	for _, name := range []string{"allow-list", "cross-site", "simple-form", "malformed-body-origin"} {
+		t.Run("rejects-"+name, func(t *testing.T) {
+			c := config.Defaults()
+			c.Enabled = true
+			if name == "allow-list" {
+				c.AllowedOrigins = []string{page}
+			}
+			h := New(Options{Config: c, Development: true})
+			r := opaqueRequest()
+			switch name {
+			case "cross-site":
+				r.Header.Set("Sec-Fetch-Site", "cross-site")
+			case "simple-form":
+				r.Header.Del("X-Fnterminal-Request")
+			case "malformed-body-origin":
+				b, _ := json.Marshal(map[string]string{"origin": "null"})
+				r = httptest.NewRequest("POST", "http://localhost"+Prefix+"/api/ws-ticket", strings.NewReader(string(b)))
+				r.Header.Set("Origin", "null")
+				r.Header.Set("Content-Type", "application/json")
+				r.Header.Set("X-Fnterminal-Request", "1")
+			}
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code < 400 || strings.Contains(w.Body.String(), `"ticket"`) {
+				t.Fatalf("unsafe ticket issuance: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+}

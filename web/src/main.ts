@@ -98,7 +98,7 @@ function refresh(): void {
       pane.element.classList.toggle('is-focused', focused);
       pane.value.session.setFocused(focused);
       pane.value.session.element.hidden = !selected;
-      pane.value.empty.hidden = pane.value.session.hadSession;
+      pane.value.empty.hidden = pane.value.session.hadSession || pane.value.session.hasDiagnostic;
       pane.value.message.textContent = pane.value.session.emptyMessage;
       pane.value.detail.textContent = pane.value.session.emptyDetail;
       pane.value.message.removeAttribute('id');

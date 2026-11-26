@@ -39,6 +39,7 @@ export class TerminalSession {
   private lastClosedInputAt = 0;
   disposed = false;
   hadSession = false;
+  hasDiagnostic = false;
   username = '';
   state: ConnectionState = 'closed';
   statusText = '准备连接';
@@ -127,6 +128,7 @@ export class TerminalSession {
     this.socket?.close();
     this.socket = null;
     this.hadSession = false;
+    this.hasDiagnostic = false;
     this.closureAnnounced = false;
     this.terminal.reset();
     this.update('connecting', '正在连接', '正在验证当前用户…', '随后将打开你的 Shell');
@@ -167,16 +169,35 @@ export class TerminalSession {
         headers: { 'Content-Type': 'application/json', 'X-Fnterminal-Request': '1' },
         body: JSON.stringify({ origin: location.origin }),
       });
-      if (!ticketResponse.ok)
+      if (!ticketResponse.ok) {
+        const body = await ticketResponse.text().catch((e: unknown) => `<读取失败: ${String(e)}>`);
+        this.writeDiagnostic('ws-ticket 请求失败', [
+          `status: ${ticketResponse.status} ${ticketResponse.statusText}`,
+          `response: ${body.trim()}`,
+          `response type/url: ${ticketResponse.type} ${ticketResponse.url}`,
+        ]);
         throw new Error(
           ticketResponse.status === 429
             ? '连接请求过多，请稍后重新连接。'
-            : '无法验证本次连接，请重新打开应用后重试。',
+            : `无法验证本次连接（HTTP ${ticketResponse.status}），详情见终端输出。`,
         );
-      const { ticket } = (await ticketResponse.json()) as { ticket: string };
+      }
+      const raw = await ticketResponse.text();
       if (!live()) return;
-      if (typeof ticket !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(ticket))
-        throw new Error('无法验证本次连接，请重新打开应用后重试。');
+      let ticket: unknown;
+      try {
+        ticket = (JSON.parse(raw) as { ticket?: unknown }).ticket;
+      } catch {
+        ticket = undefined;
+      }
+      if (typeof ticket !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(ticket)) {
+        this.writeDiagnostic('ws-ticket 响应格式无效', [
+          `status: ${ticketResponse.status}`,
+          `content-type: ${ticketResponse.headers.get('Content-Type') ?? ''}`,
+          `response: ${raw.slice(0, 500)}`,
+        ]);
+        throw new Error('无法验证本次连接（凭据格式无效），详情见终端输出。');
+      }
       const url = new URL(`${prefix}/ws`, window.location.href);
       url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(url, ['fnterminal.v1', `fnterminal-ticket.${ticket}`]);
@@ -256,6 +277,10 @@ export class TerminalSession {
         }
       };
     } catch (error) {
+      if (live() && !(error instanceof Error && error.message.includes('详情见终端输出')))
+        this.writeDiagnostic('连接异常', [
+          `error: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
+        ]);
       if (live())
         this.update(
           'error',
@@ -264,6 +289,21 @@ export class TerminalSession {
           error instanceof Error ? error.message : '请检查网络后重新连接。',
         );
     }
+  }
+
+  /** Temporary diagnostics: prints connection failure details into the terminal. */
+  private writeDiagnostic(title: string, lines: string[]): void {
+    const context = [
+      `location: ${location.href}`,
+      `origin: ${location.origin}`,
+      `secure context: ${String(window.isSecureContext)}`,
+      `in iframe: ${String(window.top !== window.self)}`,
+      `user agent: ${navigator.userAgent}`,
+    ];
+    const text = [`[诊断] ${title}`, ...lines, ...context].join('\r\n');
+    this.hasDiagnostic = true;
+    console.warn(text.replaceAll('\r\n', '\n'));
+    this.terminal.write(`\r\n\x1b[31m${text}\x1b[0m\r\n`);
   }
 
   /** Runs once per connection; an empty message means the server already explained. */

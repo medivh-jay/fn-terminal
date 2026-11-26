@@ -11,7 +11,7 @@ func TestTicketBindsIdentityAndOriginAndCannotBeReplayed(t *testing.T) {
 	s := newTicketStore()
 	a := identity.Claims{UID: 1000, Username: "alice"}
 	now := time.Now()
-	token, err := s.issue(a, "http://192.168.1.2:5666", now)
+	token, err := s.issue(a, "http://192.168.1.2:5666", false, now)
 	if err != nil || len(token) != 43 {
 		t.Fatalf("issue: %q %v", token, err)
 	}
@@ -38,7 +38,7 @@ func TestTicketExpiresAndIssuanceIsBounded(t *testing.T) {
 	now := time.Now()
 	var first string
 	for i := 0; i < 8; i++ {
-		token, err := s.issue(a, "https://nas.fnos.net", now)
+		token, err := s.issue(a, "https://nas.fnos.net", false, now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,22 +46,22 @@ func TestTicketExpiresAndIssuanceIsBounded(t *testing.T) {
 			first = token
 		}
 	}
-	if _, err := s.issue(a, "https://nas.fnos.net", now); err == nil {
+	if _, err := s.issue(a, "https://nas.fnos.net", false, now); err == nil {
 		t.Fatal("per-user ticket limit bypassed")
 	}
 	if s.consume(first, a, "https://nas.fnos.net", now.Add(time.Minute)) {
 		t.Fatal("expired ticket accepted")
 	}
-	if _, err := s.issue(a, "https://nas.fnos.net", now.Add(time.Minute)); err != nil {
+	if _, err := s.issue(a, "https://nas.fnos.net", false, now.Add(time.Minute)); err != nil {
 		t.Fatalf("expired tickets retained capacity: %v", err)
 	}
 	s = newTicketStore()
 	for i := 0; i < 1024; i++ {
-		if _, err := s.issue(identity.Claims{UID: uint32(1000 + i), Username: "user"}, "https://nas.fnos.net", now); err != nil {
+		if _, err := s.issue(identity.Claims{UID: uint32(1000 + i), Username: "user"}, "https://nas.fnos.net", false, now); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.issue(a, "https://nas.fnos.net", now); err == nil {
+	if _, err := s.issue(a, "https://nas.fnos.net", false, now); err == nil {
 		t.Fatal("global ticket limit bypassed")
 	}
 }
@@ -70,7 +70,7 @@ func TestOnlyOneConcurrentConnectionCanConsumeTicket(t *testing.T) {
 	s := newTicketStore()
 	a := identity.Claims{UID: 1000, Username: "alice"}
 	now := time.Now()
-	token, err := s.issue(a, "https://nas.fnos.net", now)
+	token, err := s.issue(a, "https://nas.fnos.net", false, now)
 	if err != nil {
 		t.Fatal(err)
 	}
